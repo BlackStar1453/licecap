@@ -1,0 +1,77 @@
+name: Build LICEcap
+
+on:
+  push:
+    branches: [ main, master ]
+  pull_request:
+  workflow_dispatch:
+
+jobs:
+  build-macos:
+    runs-on: macos-latest
+    steps:
+    - name: Checkout repository
+      uses: actions/checkout@v4
+
+    - name: Build for macOS
+      run: |
+        cd licecap
+        xcodebuild -project licecap.xcodeproj -target licecap -configuration Release -derivedDataPath build CODE_SIGNING_ALLOWED=NO
+
+    - name: Prepare build artifacts
+      run: |
+        mkdir -p build/artifacts
+        cd licecap
+        if [ -d "build/Build/Products/Release/licecap.app" ]; then
+          echo "Found app at expected location"
+          cd build/Build/Products/Release
+          ditto -c -k --sequesterRsrc --keepParent licecap.app licecap.app.zip
+          cd ../../..
+          # Copy zipped app to the artifacts directory at repository root
+          cp build/Build/Products/Release/licecap.app.zip ../build/artifacts/
+        else
+          echo "Looking for build products..."
+          find . -name "licecap.app" -type d
+          echo "App not found at expected location"
+          echo "Build completed but app packaging failed" > build/artifacts/build-status.txt
+        fi
+
+    - name: Upload macOS artifacts
+      uses: actions/upload-artifact@v4
+      with:
+        name: licecap-macos
+        path: build/artifacts/
+        retention-days: 7
+        if-no-files-found: error
+
+  build-windows:
+    runs-on: windows-latest
+    steps:
+    - name: Checkout repository
+      uses: actions/checkout@v4
+
+    - name: Setup MSBuild
+      uses: microsoft/setup-msbuild@v2
+
+    - name: Build for Windows
+      run: |
+        cd licecap/licecap
+        msbuild licecap.sln /p:Configuration=Release /p:Platform=Win32
+
+    - name: Prepare Windows artifacts
+      run: |
+        New-Item -ItemType Directory -Force -Path artifacts
+        cd licecap/licecap
+        if (Test-Path "Release_new") {
+          Copy-Item -Path "Release_new\*" -Destination "../../artifacts/" -Recurse -Force
+        } else {
+          "Release directory not found" | Out-File -FilePath "../../artifacts/build-status.txt"
+        }
+
+    - name: Upload Windows artifacts
+      uses: actions/upload-artifact@v4
+      with:
+        name: licecap-windows
+        path: artifacts/
+        retention-days: 7
+        if-no-files-found: error
