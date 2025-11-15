@@ -26,7 +26,7 @@ jobs:
     - name: Build for macOS
       run: |
         cd licecap
-        xcodebuild -project licecap.xcodeproj -target licecap -configuration Release CODE_SIGNING_ALLOWED=NO
+        xcodebuild -project licecap.xcodeproj -scheme licecap -configuration Release CODE_SIGNING_ALLOWED=NO -derivedDataPath build
 
     - name: Prepare build artifacts
       run: |
@@ -84,10 +84,12 @@ jobs:
       run: |
         mkdir -p artifacts/Release_Win32
         cd licecap/licecap
-        if (Test-Path "Release_new") {
+        if (Test-Path "Release") {
+          Copy-Item -Path "Release\*" -Destination "../../artifacts/Release_Win32/" -Recurse -Force
+        } elseif (Test-Path "Release_new") {
           Copy-Item -Path "Release_new\*" -Destination "../../artifacts/Release_Win32/" -Recurse -Force
         } else {
-          Write-Host "Release_new directory not found, checking alternative paths..."
+          Write-Host "Release directory not found, checking alternative paths..."
           Get-ChildItem -Path "." -Recurse -Directory -Name "Release*"
         }
 

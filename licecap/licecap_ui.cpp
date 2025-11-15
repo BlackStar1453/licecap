@@ -144,7 +144,7 @@ public:
     }
 
     // Use similarity-based duplicate detection. If similar enough, treat as duplicate.
-    double sim = CalculateSimilarity(lastbm, bm, NULL, dup_cfg);
+    double sim = CalculateSimilarity(lastbm, bm, NULL, &dup_cfg);
     if (sim >= dup_cfg.similarity_threshold)
     {
       // Duplicate detected. If keeping last, update history with current frame content.

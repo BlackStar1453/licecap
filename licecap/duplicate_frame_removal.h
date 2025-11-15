@@ -19,7 +19,6 @@
 #define DUPLICATE_FRAME_REMOVAL_H_
 
 #include <stddef.h>
-#include <vector>
 
 #include "../WDL/lice/lice.h"  // LICE_IBitmap, LICE_pixel and helpers
 
@@ -107,24 +106,52 @@ struct DuplicateFrameRemovalSettings
 double CalculateSimilarity(LICE_IBitmap* a,
                            LICE_IBitmap* b,
                            const RECT* roi,
-                           const DuplicateFrameRemovalSettings& cfg);
+                           const DuplicateFrameRemovalSettings* cfg);
 
 // Lightweight duplicate test for two frames. Returns true if similar
 // enough under cfg. Optionally writes the computed similarity.
-bool IsDuplicateFrame(const FrameInfo& prev,
-                      const FrameInfo& curr,
-                      const DuplicateFrameRemovalSettings& cfg,
+bool IsDuplicateFrame(const FrameInfo* prev,
+                      const FrameInfo* curr,
+                      const DuplicateFrameRemovalSettings* cfg,
                       double* out_similarity);
+
+// C-style dynamic array structure for frames
+typedef struct {
+  FrameInfo* frames;
+  size_t count;
+  size_t capacity;
+} FrameArray;
+
+// C-style dynamic array structure for indices
+typedef struct {
+  size_t* indices;
+  size_t count;
+  size_t capacity;
+} IndexArray;
+
+// Initialize a dynamic array
+void FrameArray_Init(FrameArray* arr, size_t initial_capacity);
+void IndexArray_Init(IndexArray* arr, size_t initial_capacity);
+
+// Add elements to dynamic array
+void FrameArray_Add(FrameArray* arr, const FrameInfo* frame);
+void IndexArray_Add(IndexArray* arr, size_t index);
+
+// Free dynamic array memory
+void FrameArray_Free(FrameArray* arr);
+void IndexArray_Free(IndexArray* arr);
 
 // Remove consecutive duplicates from an input sequence.
 // - input:  original frames in capture order
-// - output: filtered frames after duplicate removal
+// - input_count: number of frames in input array
+// - output: filtered frames after duplicate removal (will be initialized)
 // - removed_indices: optional output of indices from the input sequence
-//                    that were removed
+//                    that were removed (will be initialized if not NULL)
 // Returns the number of frames removed.
-size_t RemoveDuplicateFrames(const std::vector<FrameInfo>& input,
-                             std::vector<FrameInfo>& output,
-                             const DuplicateFrameRemovalSettings& cfg,
-                             std::vector<size_t>* removed_indices);
+size_t RemoveDuplicateFrames(const FrameInfo* input,
+                             size_t input_count,
+                             FrameArray* output,
+                             const DuplicateFrameRemovalSettings* cfg,
+                             IndexArray* removed_indices);
 
 #endif // DUPLICATE_FRAME_REMOVAL_H_
