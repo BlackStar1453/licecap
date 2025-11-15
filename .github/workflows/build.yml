@@ -41,12 +41,15 @@ jobs:
         run: |
           set -euxo pipefail
           # Build without code signing to avoid CI requirements
+          # Add compiler flags to fix WDL/zlib compatibility issues
           xcodebuild \
             -project licecap.xcodeproj \
             -scheme licecap \
             -configuration Release \
             -derivedDataPath build \
             CODE_SIGN_IDENTITY="" CODE_SIGNING_REQUIRED=NO CODE_SIGNING_ALLOWED=NO \
+            OTHER_CFLAGS="-DSTDC=1 -DHAVE_UNISTD_H=1 -D_LARGEFILE64_SOURCE=0 -D_SYS16BIT_=0 -DMSDOS=0 -D__STDC_VERSION__=201112L" \
+            GCC_PREPROCESSOR_DEFINITIONS="$(inherited) STDC=1 HAVE_UNISTD_H=1 _LARGEFILE64_SOURCE=0" \
             build
 
           echo "Built products:"

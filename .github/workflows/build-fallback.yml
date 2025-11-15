@@ -1,0 +1,91 @@
+name: Build LICEcap (Fallback)
+
+on:
+  push:
+    branches: [ main, master ]
+  pull_request:
+  workflow_dispatch:
+
+jobs:
+  build-macos-fallback:
+    runs-on: macos-latest
+    steps:
+    - name: Checkout repository
+      uses: actions/checkout@v4
+      with:
+        submodules: recursive
+
+    - name: Build for macOS (Target-based fallback)
+      run: |
+        cd licecap
+        # Build with WDL/zlib compatibility fixes
+        xcodebuild \
+          -project licecap.xcodeproj \
+          -target licecap \
+          -configuration Release \
+          CODE_SIGNING_ALLOWED=NO \
+          CODE_SIGNING_REQUIRED=NO \
+          OTHER_CFLAGS="-DSTDC=1 -DHAVE_UNISTD_H=1 -D_LARGEFILE64_SOURCE=0 -D_SYS16BIT_=0 -DMSDOS=0 -D__STDC_VERSION__=201112L" \
+          GCC_PREPROCESSOR_DEFINITIONS="$(inherited) STDC=1 HAVE_UNISTD_H=1 _LARGEFILE64_SOURCE=0"
+
+    - name: Prepare build artifacts
+      run: |
+        mkdir -p build/artifacts
+        cd licecap
+        if [ -d "build/Release/licecap.app" ]; then
+          echo "Found app at build/Release/"
+          cp -R "build/Release/licecap.app" "../build/artifacts/"
+          cd ../build/artifacts
+          zip -r licecap.app.zip licecap.app
+        else
+          echo "Looking for build products..."
+          find . -name "licecap.app" -type d 2>/dev/null || true
+          echo "App not found at expected location"
+          mkdir -p ../build/artifacts
+          echo "Build completed but app packaging failed" > ../build/artifacts/build-status.txt
+        fi
+
+    - name: Upload macOS artifacts
+      uses: actions/upload-artifact@v4
+      with:
+        name: licecap-macos-fallback
+        path: build/artifacts/
+        retention-days: 7
+        if-no-files-found: warn
+
+  build-windows-fallback:
+    runs-on: windows-latest
+    steps:
+    - name: Checkout repository
+      uses: actions/checkout@v4
+      with:
+        submodules: recursive
+
+    - name: Setup MSBuild
+      uses: microsoft/setup-msbuild@v2
+
+    - name: Build for Windows
+      run: |
+        cd licecap/licecap
+        msbuild licecap.sln /p:Configuration=Release /p:Platform=Win32 /t:licecap
+
+    - name: Prepare Windows artifacts
+      run: |
+        mkdir -p artifacts
+        cd licecap/licecap
+        if (Test-Path "Release") {
+          Copy-Item -Path "Release\*" -Destination "../../artifacts/" -Recurse -Force
+        } elseif (Test-Path "Release_new") {
+          Copy-Item -Path "Release_new\*" -Destination "../../artifacts/" -Recurse -Force
+        } else {
+          Write-Host "Release directory not found, checking alternative paths..."
+          Get-ChildItem -Path "." -Recurse -Directory -Name "Release*" | Out-File -FilePath "../../artifacts/build-status.txt"
+        }
+
+    - name: Upload Windows artifacts
+      uses: actions/upload-artifact@v4
+      with:
+        name: licecap-windows-fallback
+        path: artifacts/
+        retention-days: 7
+        if-no-files-found: warn

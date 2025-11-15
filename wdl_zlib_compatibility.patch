@@ -1,0 +1,26 @@
+# WDL/zlib Compatibility Fix for Xcode 16.4
+#
+# This patch fixes compilation issues in WDL/zlib when building with modern Xcode versions
+# by adding proper preprocessor definitions to override problematic platform detection.
+
+diff --git a/WDL/zlib/zconf.h b/WDL/zlib/zconf.h
+index xxxxxxx..xxxxxxx 100644
+--- a/WDL/zlib/zconf.h
++++ b/WDL/zlib/zconf.h
+@@ -199,6 +199,15 @@
+ #  define STDC
+ #endif
+
++/* Modern compatibility fixes for Xcode 16.4 and later */
++#if defined(__APPLE__) && defined(__clang__)
++#  ifndef STDC
++#    define STDC 1
++#  endif
++#  ifndef HAVE_UNISTD_H
++#    define HAVE_UNISTD_H 1
++#  endif
++#endif
++
+ #if defined(__STDC_VERSION__) && !defined(STDC)
+ #  ifndef STDC
+ #    define STDC
