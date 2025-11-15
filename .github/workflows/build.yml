@@ -1,4 +1,4 @@
-name: Build licecap (macOS + Windows)
+name: Build LICEcap (macOS)
 
 on:
   workflow_dispatch:
@@ -96,54 +96,4 @@ jobs:
           name: licecap-macos
           path: |
             licecap/build/artifacts/*
-          if-no-files-found: error
-
-  windows:
-    name: Windows build (MSBuild)
-    runs-on: windows-latest
-    defaults:
-      run:
-        shell: pwsh
-    steps:
-      - name: Checkout
-        uses: actions/checkout@v4
-        with:
-          submodules: recursive
-
-      - name: Setup MSBuild
-        uses: microsoft/setup-msbuild@v1.3.1
-
-      - name: Show MSBuild version
-        run: msbuild -version
-
-      - name: Build licecap.exe (Release|Win32)
-        run: |
-          Set-StrictMode -Version Latest
-          $ErrorActionPreference = 'Stop'
-          msbuild "licecap\licecap\licecap.sln" /m /p:Configuration=Release /p:Platform=Win32
-
-      - name: Collect Windows artifacts
-        run: |
-          Set-StrictMode -Version Latest
-          $ErrorActionPreference = 'Stop'
-          $outDir = "licecap\licecap\Release_new"
-          if (-Not (Test-Path $outDir)) {
-            Write-Host "ERROR: Expected output directory not found: $outDir"
-            Write-Host "Listing licecap\licecap contents for debugging:"
-            Get-ChildItem -Recurse -Force "licecap\licecap" | Select-Object FullName
-            exit 1
-          }
-          if (-Not (Test-Path "$outDir\licecap.exe")) {
-            Write-Host "ERROR: licecap.exe not found in $outDir"
-            exit 1
-          }
-          New-Item -ItemType Directory -Force -Path artifacts | Out-Null
-          Copy-Item -Recurse -Force $outDir artifacts\Release_Win32
-
-      - name: Upload Windows artifacts
-        uses: actions/upload-artifact@v4
-        with:
-          name: licecap-windows
-          path: |
-            artifacts/Release_Win32/**
           if-no-files-found: error

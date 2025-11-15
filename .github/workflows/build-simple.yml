@@ -1,4 +1,4 @@
-name: Build LICEcap
+name: Build LICEcap (Simple macOS)
 
 on:
   push:
@@ -51,37 +51,5 @@ jobs:
       with:
         name: licecap-macos
         path: build/artifacts/
-        retention-days: 7
-        if-no-files-found: error
-
-  build-windows:
-    runs-on: windows-latest
-    steps:
-    - name: Checkout repository
-      uses: actions/checkout@v4
-
-    - name: Setup MSBuild
-      uses: microsoft/setup-msbuild@v2
-
-    - name: Build for Windows
-      run: |
-        cd licecap/licecap
-        msbuild licecap.sln /p:Configuration=Release /p:Platform=Win32
-
-    - name: Prepare Windows artifacts
-      run: |
-        New-Item -ItemType Directory -Force -Path artifacts
-        cd licecap/licecap
-        if (Test-Path "Release_new") {
-          Copy-Item -Path "Release_new\*" -Destination "../../artifacts/" -Recurse -Force
-        } else {
-          "Release directory not found" | Out-File -FilePath "../../artifacts/build-status.txt"
-        }
-
-    - name: Upload Windows artifacts
-      uses: actions/upload-artifact@v4
-      with:
-        name: licecap-windows
-        path: artifacts/
         retention-days: 7
         if-no-files-found: error
