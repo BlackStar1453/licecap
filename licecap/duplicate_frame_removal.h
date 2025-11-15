@@ -90,7 +90,7 @@ struct DuplicateFrameRemovalSettings
   bool enable_early_out;
 
   DuplicateFrameRemovalSettings()
-    : similarity_threshold(0.995),
+    : similarity_threshold(0.90),
       sample_step_x(1),
       sample_step_y(1),
       per_channel_tolerance(0),
