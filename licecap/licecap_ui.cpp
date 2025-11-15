@@ -72,6 +72,7 @@
 #include "../WDL/wdltypes.h"
 #include "../WDL/wingui/wndsize.h"
 #include "../WDL/wdlstring.h"
+#include "duplicate_frame_removal.h" // duplicate frame removal API
 
 
 #include "licecap_version.h"
@@ -97,6 +98,10 @@ class gif_encoder
   int loopcnt;
   LICE_pixel trans_mask;
 
+  // Duplicate removal settings (refer to globals for defaults)
+  bool dup_remove_enable;
+  DuplicateFrameRemovalSettings dup_cfg;
+
 public:
 
 
@@ -108,6 +113,12 @@ public:
     ctx=gifctx;
     loopcnt=use_loopcnt;
     trans_mask = LICE_RGBA(trans_chan_mask,trans_chan_mask,trans_chan_mask,0);
+
+    // Initialize duplicate removal settings from globals (declared below)
+    extern bool g_dupremoval_enable;
+    extern DuplicateFrameRemovalSettings g_dupremoval_cfg;
+    dup_remove_enable = g_dupremoval_enable;
+    dup_cfg = g_dupremoval_cfg;
   }
   ~gif_encoder()
   {
@@ -122,7 +133,31 @@ public:
     diffs[0]=diffs[1]=0;
     diffs[2]=bm->getWidth();
     diffs[3]=bm->getHeight();
-    return !lastbm || LICE_BitmapCmpEx(lastbm, bm, trans_mask,diffs);
+
+    // If we don't have history yet, force a new frame
+    if (!lastbm) return true;
+
+    if (!dup_remove_enable)
+    {
+      // Backwards-compatible behavior using exact diff with mask
+      return LICE_BitmapCmpEx(lastbm, bm, trans_mask, diffs) ? true : false;
+    }
+
+    // Use similarity-based duplicate detection. If similar enough, treat as duplicate.
+    double sim = CalculateSimilarity(lastbm, bm, NULL, dup_cfg);
+    if (sim >= dup_cfg.similarity_threshold)
+    {
+      // Duplicate detected. If keeping last, update history with current frame content.
+      if (dup_cfg.keep_mode == kDuplicateKeepLast)
+      {
+        // Copy full frame into lastbm so the eventual kept frame reflects most recent content.
+        LICE_Copy(lastbm, bm);
+      }
+      return false; // no new frame needed
+    }
+
+    // Otherwise, frames differ: compute bounding box for changed region via LICE_BitmapCmpEx
+    return LICE_BitmapCmpEx(lastbm, bm, trans_mask, diffs) ? true : false;
   }
   
   void frame_finish()
@@ -177,6 +212,21 @@ int g_stop_after_msec;
 
 int g_gif_loopcount=0;
 int g_max_fps=8;  
+
+// ----------------------------------------------------------------------
+// Duplicate frame removal globals (INI-configurable; default disabled)
+bool g_dupremoval_enable=false; // default off for backward compatibility
+DuplicateFrameRemovalSettings g_dupremoval_cfg; // default values set by ctor
+
+// Provide INI keys for persistence
+static const char* kIniDupEnable = "dup_remove_enable";
+static const char* kIniDupThresh = "dup_similarity";
+static const char* kIniDupKeep   = "dup_keep_mode";   // 0=keep first, 1=keep last
+static const char* kIniDupSx     = "dup_sample_x";
+static const char* kIniDupSy     = "dup_sample_y";
+static const char* kIniDupTol    = "dup_tolerance";   // per-channel tolerance
+static const char* kIniDupChan   = "dup_channel_mask"; // integer mask (LICE_RGBA)
+static const char* kIniDupEarly  = "dup_early_out";    // 0/1
 
 char g_last_fn[2048];
 WDL_String g_ini_file;
@@ -796,6 +846,38 @@ static UINT_PTR CALLBACK SaveOptsProc(HWND hwndDlg, UINT msg, WPARAM wParam, LPA
 #ifndef VIDEO_ENCODER_SUPPORT
       ShowWindow(GetDlgItem(hwndDlg, IDC_BUTTON1), false);
 #endif
+
+      // Optional: wire up duplicate-frame removal controls if present in dialog resource.
+      // Control IDs are not in resource.h by default; this code is resilient if controls are absent.
+      // IDs we expect if added: 1100..1106 (see defines below).
+#ifndef IDC_DUP_ENABLE
+#define IDC_DUP_ENABLE   1100
+#define IDC_DUP_THRESH   1101
+#define IDC_DUP_KEEP_FIRST 1102
+#define IDC_DUP_KEEP_LAST  1103
+#define IDC_DUP_SAMPLE_X 1104
+#define IDC_DUP_SAMPLE_Y 1105
+#define IDC_DUP_TOL     1106
+#endif
+      if (GetDlgItem(hwndDlg, IDC_DUP_ENABLE))
+      {
+        CheckDlgButton(hwndDlg, IDC_DUP_ENABLE, g_dupremoval_enable ? BST_CHECKED : BST_UNCHECKED);
+        char tbuf[64];
+        snprintf(tbuf, sizeof(tbuf), "%.5f", g_dupremoval_cfg.similarity_threshold);
+        SetDlgItemText(hwndDlg, IDC_DUP_THRESH, tbuf);
+        SetDlgItemInt(hwndDlg, IDC_DUP_SAMPLE_X, wdl_max(1,g_dupremoval_cfg.sample_step_x), FALSE);
+        SetDlgItemInt(hwndDlg, IDC_DUP_SAMPLE_Y, wdl_max(1,g_dupremoval_cfg.sample_step_y), FALSE);
+        SetDlgItemInt(hwndDlg, IDC_DUP_TOL, wdl_max(0,g_dupremoval_cfg.per_channel_tolerance), FALSE);
+        CheckDlgButton(hwndDlg, g_dupremoval_cfg.keep_mode==kDuplicateKeepLast?IDC_DUP_KEEP_LAST:IDC_DUP_KEEP_FIRST, BST_CHECKED);
+
+        const BOOL en = g_dupremoval_enable ? TRUE : FALSE;
+        EnableWindow(GetDlgItem(hwndDlg, IDC_DUP_THRESH), en);
+        EnableWindow(GetDlgItem(hwndDlg, IDC_DUP_SAMPLE_X), en);
+        EnableWindow(GetDlgItem(hwndDlg, IDC_DUP_SAMPLE_Y), en);
+        EnableWindow(GetDlgItem(hwndDlg, IDC_DUP_TOL), en);
+        EnableWindow(GetDlgItem(hwndDlg, IDC_DUP_KEEP_FIRST), en);
+        EnableWindow(GetDlgItem(hwndDlg, IDC_DUP_KEEP_LAST), en);
+      }
     }
     return 0;
     case WM_DESTROY:
@@ -823,6 +905,31 @@ static UINT_PTR CALLBACK SaveOptsProc(HWND hwndDlg, UINT msg, WPARAM wParam, LPA
         BOOL t=FALSE;
         int a=GetDlgItemInt(hwndDlg,IDC_LOOPCNT,&t,FALSE);
         if (t) g_gif_loopcount=(a>0&&a<65536) ? a : 0;
+      }
+
+      // Read back duplicate-frame removal options if controls exist
+      if (GetDlgItem(hwndDlg, IDC_DUP_ENABLE))
+      {
+        g_dupremoval_enable = !!IsDlgButtonChecked(hwndDlg, IDC_DUP_ENABLE);
+
+        char tbuf[128];
+        GetDlgItemText(hwndDlg, IDC_DUP_THRESH, tbuf, sizeof(tbuf));
+        double th = atof(tbuf);
+        if (th < 0.0) th = 0.0; else if (th > 1.0) th = 1.0;
+        g_dupremoval_cfg.similarity_threshold = th;
+
+        BOOL t = FALSE;
+        int sx = GetDlgItemInt(hwndDlg, IDC_DUP_SAMPLE_X, &t, FALSE);
+        if (t && sx >= 1) g_dupremoval_cfg.sample_step_x = sx;
+        t = FALSE;
+        int sy = GetDlgItemInt(hwndDlg, IDC_DUP_SAMPLE_Y, &t, FALSE);
+        if (t && sy >= 1) g_dupremoval_cfg.sample_step_y = sy;
+
+        t = FALSE;
+        int tol = GetDlgItemInt(hwndDlg, IDC_DUP_TOL, &t, FALSE);
+        if (t && tol >= 0) g_dupremoval_cfg.per_channel_tolerance = tol;
+
+        g_dupremoval_cfg.keep_mode = IsDlgButtonChecked(hwndDlg, IDC_DUP_KEEP_LAST) ? kDuplicateKeepLast : kDuplicateKeepFirst;
       }
 
     }
@@ -859,6 +966,17 @@ static UINT_PTR CALLBACK SaveOptsProc(HWND hwndDlg, UINT msg, WPARAM wParam, LPA
           DialogBox(g_hInst,MAKEINTRESOURCE(IDD_OPTIONS),hwndDlg,VideoOptionsProc);
         break;
 #endif
+        case IDC_DUP_ENABLE:
+        {
+          const BOOL en = !!IsDlgButtonChecked(hwndDlg, IDC_DUP_ENABLE);
+          EnableWindow(GetDlgItem(hwndDlg, IDC_DUP_THRESH), en);
+          EnableWindow(GetDlgItem(hwndDlg, IDC_DUP_SAMPLE_X), en);
+          EnableWindow(GetDlgItem(hwndDlg, IDC_DUP_SAMPLE_Y), en);
+          EnableWindow(GetDlgItem(hwndDlg, IDC_DUP_TOL), en);
+          EnableWindow(GetDlgItem(hwndDlg, IDC_DUP_KEEP_FIRST), en);
+          EnableWindow(GetDlgItem(hwndDlg, IDC_DUP_KEEP_LAST), en);
+        }
+        return 0;
       }
     return 0;
   }
@@ -1076,6 +1194,22 @@ void SaveConfig(HWND hwndDlg)
   WritePrivateProfileString("licecap","video_abr",buf,g_ini_file.Get());
 #endif
 
+  // Duplicate removal settings
+  WritePrivateProfileString("licecap", kIniDupEnable, g_dupremoval_enable?"1":"0", g_ini_file.Get());
+  snprintf(buf, sizeof(buf), "%.6f", g_dupremoval_cfg.similarity_threshold);
+  WritePrivateProfileString("licecap", kIniDupThresh, buf, g_ini_file.Get());
+  snprintf(buf, sizeof(buf), "%d", (int)g_dupremoval_cfg.keep_mode);
+  WritePrivateProfileString("licecap", kIniDupKeep, buf, g_ini_file.Get());
+  snprintf(buf, sizeof(buf), "%d", wdl_max(1,g_dupremoval_cfg.sample_step_x));
+  WritePrivateProfileString("licecap", kIniDupSx, buf, g_ini_file.Get());
+  snprintf(buf, sizeof(buf), "%d", wdl_max(1,g_dupremoval_cfg.sample_step_y));
+  WritePrivateProfileString("licecap", kIniDupSy, buf, g_ini_file.Get());
+  snprintf(buf, sizeof(buf), "%d", wdl_max(0,g_dupremoval_cfg.per_channel_tolerance));
+  WritePrivateProfileString("licecap", kIniDupTol, buf, g_ini_file.Get());
+  snprintf(buf, sizeof(buf), "%u", (unsigned)g_dupremoval_cfg.channel_mask);
+  WritePrivateProfileString("licecap", kIniDupChan, buf, g_ini_file.Get());
+  WritePrivateProfileString("licecap", kIniDupEarly, g_dupremoval_cfg.enable_early_out?"1":"0", g_ini_file.Get());
+
 }
 
 static WDL_DLGRET liceCapMainProc(HWND hwndDlg, UINT uMsg, WPARAM wParam, LPARAM lParam)
@@ -1159,6 +1293,33 @@ static WDL_DLGRET liceCapMainProc(HWND hwndDlg, UINT uMsg, WPARAM wParam, LPARAM
       g_cap_video_vbr = GetPrivateProfileInt("licecap", "video_vbr", g_cap_video_vbr, g_ini_file.Get());
       g_cap_video_abr = GetPrivateProfileInt("licecap", "video_abr", g_cap_video_abr, g_ini_file.Get());
 #endif
+
+      // Load duplicate removal settings (defaults already set by ctor)
+      g_dupremoval_enable = !!GetPrivateProfileInt("licecap", kIniDupEnable, g_dupremoval_enable?1:0, g_ini_file.Get());
+      {
+        char tbuf[128];
+        GetPrivateProfileString("licecap", kIniDupThresh, "", tbuf, sizeof(tbuf), g_ini_file.Get());
+        if (tbuf[0]) {
+          double th = atof(tbuf);
+          if (th < 0.0) th = 0.0; else if (th > 1.0) th = 1.0;
+          g_dupremoval_cfg.similarity_threshold = th;
+        }
+      }
+      g_dupremoval_cfg.keep_mode = GetPrivateProfileInt("licecap", kIniDupKeep, (int)g_dupremoval_cfg.keep_mode, g_ini_file.Get()) ? kDuplicateKeepLast : kDuplicateKeepFirst;
+      g_dupremoval_cfg.sample_step_x = wdl_max(1, GetPrivateProfileInt("licecap", kIniDupSx, g_dupremoval_cfg.sample_step_x, g_ini_file.Get()));
+      g_dupremoval_cfg.sample_step_y = wdl_max(1, GetPrivateProfileInt("licecap", kIniDupSy, g_dupremoval_cfg.sample_step_y, g_ini_file.Get()));
+      g_dupremoval_cfg.per_channel_tolerance = wdl_max(0, GetPrivateProfileInt("licecap", kIniDupTol, g_dupremoval_cfg.per_channel_tolerance, g_ini_file.Get()));
+      {
+        char tbuf[128];
+        GetPrivateProfileString("licecap", kIniDupChan, "", tbuf, sizeof(tbuf), g_ini_file.Get());
+        if (tbuf[0])
+        {
+          unsigned int cm = 0;
+          sscanf(tbuf, "%u", &cm);
+          g_dupremoval_cfg.channel_mask = (LICE_pixel)cm;
+        }
+      }
+      g_dupremoval_cfg.enable_early_out = !!GetPrivateProfileInt("licecap", kIniDupEarly, g_dupremoval_cfg.enable_early_out?1:0, g_ini_file.Get());
 
     return 1;
     case WM_DESTROY:
@@ -2223,7 +2384,6 @@ REAPER_PLUGIN_DLL_EXPORT int REAPER_PLUGIN_ENTRYPOINT(REAPER_PLUGIN_HINSTANCE hI
 #include "licecap.rc_mac_dlg"
 
 #endif
-
 
 
 

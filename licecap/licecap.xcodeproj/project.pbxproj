@@ -54,6 +54,7 @@
 		8D11072B0486CEB800E47090 /* InfoPlist.strings in Resources */ = {isa = PBXBuildFile; fileRef = 089C165CFE840E0CC02AAC07 /* InfoPlist.strings */; };
 		8D11072D0486CEB800E47090 /* main.m in Sources */ = {isa = PBXBuildFile; fileRef = 29B97316FDCFA39411CA2CEA /* main.m */; settings = {ATTRIBUTES = (); }; };
 		8D11072F0486CEB800E47090 /* Cocoa.framework in Frameworks */ = {isa = PBXBuildFile; fileRef = 1058C7A1FEA54F0111CA2CBB /* Cocoa.framework */; };
+B3E5C1A513D2F0AA00DFE101 /* duplicate_frame_removal.cpp in Sources */ = {isa = PBXBuildFile; fileRef = B3E5C1A513D2F0AA00DFE001 /* duplicate_frame_removal.cpp */; };
 /* End PBXBuildFile section */
 
 /* Begin PBXFileReference section */
@@ -135,6 +136,8 @@
 		332AA01013CB9EB800EBEB86 /* licecap.icns */ = {isa = PBXFileReference; lastKnownFileType = image.icns; path = licecap.icns; sourceTree = "<group>"; };
 		8D1107310486CEB800E47090 /* licecap-Info.plist */ = {isa = PBXFileReference; fileEncoding = 4; lastKnownFileType = text.plist.xml; path = "licecap-Info.plist"; sourceTree = "<group>"; };
 		8D1107320486CEB800E47090 /* licecap.app */ = {isa = PBXFileReference; explicitFileType = wrapper.application; includeInIndex = 0; path = licecap.app; sourceTree = BUILT_PRODUCTS_DIR; };
+B3E5C1A513D2F0AA00DFE001 /* duplicate_frame_removal.cpp */ = {isa = PBXFileReference; fileEncoding = 4; lastKnownFileType = sourcecode.cpp.cpp; path = duplicate_frame_removal.cpp; sourceTree = "<group>"; };
+B3E5C1A513D2F0AA00DFE002 /* duplicate_frame_removal.h */ = {isa = PBXFileReference; fileEncoding = 4; lastKnownFileType = sourcecode.c.h; path = duplicate_frame_removal.h; sourceTree = "<group>"; };
 /* End PBXFileReference section */
 
 /* Begin PBXFrameworksBuildPhase section */
@@ -206,6 +209,8 @@
 				256AC3F00F4B6AF500CF3369 /* licecap_Prefix.pch */,
 				29B97316FDCFA39411CA2CEA /* main.m */,
 				332A9CA813CB829300EBEB86 /* capturewindow.mm */,
+				B3E5C1A513D2F0AA00DFE001 /* duplicate_frame_removal.cpp */,
+				B3E5C1A513D2F0AA00DFE002 /* duplicate_frame_removal.h */,
 			);
 			name = "Other Sources";
 			sourceTree = "<group>";
@@ -457,6 +462,7 @@
 				332A9BD513CB5B6E00EBEB86 /* wndsize.cpp in Sources */,
 				332A9BFB13CB5D7200EBEB86 /* filebrowse.cpp in Sources */,
 				332A9CA913CB829300EBEB86 /* capturewindow.mm in Sources */,
+				B3E5C1A513D2F0AA00DFE101 /* duplicate_frame_removal.cpp in Sources */,
 			);
 			runOnlyForDeploymentPostprocessing = 0;
 		};
