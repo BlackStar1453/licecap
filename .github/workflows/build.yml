@@ -1,0 +1,146 @@
+name: Build licecap (macOS + Windows)
+
+on:
+  workflow_dispatch:
+  push:
+    branches: [ main, master ]
+  pull_request:
+
+permissions:
+  contents: read
+
+defaults:
+  run:
+    shell: bash
+
+jobs:
+  macos:
+    name: macOS build (xcodebuild)
+    runs-on: macos-latest
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+        with:
+          submodules: recursive
+
+      # PHP is required by licecap/makedmg.sh (a PHP script) to package a DMG.
+      - name: Setup PHP
+        uses: shivammathur/setup-php@v2
+        with:
+          php-version: '8.2'
+
+      - name: Verify PHP
+        run: php -v
+
+      - name: Print Xcode version
+        run: xcodebuild -version
+
+      - name: Build licecap.app (Release)
+        working-directory: licecap
+        run: |
+          set -euxo pipefail
+          # Build without code signing to avoid CI requirements
+          xcodebuild \
+            -project licecap.xcodeproj \
+            -configuration Release \
+            -target licecap \
+            -derivedDataPath build \
+            CODE_SIGN_IDENTITY="" CODE_SIGNING_REQUIRED=NO CODE_SIGNING_ALLOWED=NO \
+            build
+
+          echo "Built products:"
+          ls -la build/Build/Products/Release || true
+
+      - name: Package licecap.app as zip
+        working-directory: licecap
+        run: |
+          set -euxo pipefail
+          mkdir -p build/artifacts
+          # Zip the .app bundle with resource forks preserved
+          pushd build/Build/Products/Release
+          if [ ! -d "licecap.app" ]; then
+            echo "ERROR: licecap.app not found"
+            ls -la
+            exit 1
+          fi
+          ditto -c -k --sequesterRsrc --keepParent licecap.app licecap.app.zip
+          popd
+          cp build/Build/Products/Release/licecap.app.zip build/artifacts/
+
+      - name: Optional DMG packaging via PHP script
+        working-directory: licecap
+        run: |
+          set -euxo pipefail
+          # makedmg.sh expects build/Release/LICEcap.app; create that layout from DerivedData
+          mkdir -p build/Release
+          rm -rf build/Release/LICEcap.app || true
+          cp -R build/Build/Products/Release/licecap.app "build/Release/LICEcap.app"
+
+          # Run the PHP-based packager to produce a DMG; no signing in CI
+          php ./makedmg.sh
+
+          # Collect DMG if produced
+          mkdir -p build/artifacts
+          # The script writes as build/licecap<ver>.dmg; grab any DMG it created
+          if ls build/licecap*.dmg 1> /dev/null 2>&1; then
+            cp build/licecap*.dmg build/artifacts/
+          fi
+
+      - name: Upload macOS artifacts
+        uses: actions/upload-artifact@v4
+        with:
+          name: licecap-macos
+          path: |
+            licecap/build/artifacts/*
+          if-no-files-found: error
+
+  windows:
+    name: Windows build (MSBuild)
+    runs-on: windows-latest
+    defaults:
+      run:
+        shell: pwsh
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+        with:
+          submodules: recursive
+
+      - name: Setup MSBuild
+        uses: microsoft/setup-msbuild@v1.3.1
+
+      - name: Show MSBuild version
+        run: msbuild -version
+
+      - name: Build licecap.exe (Release|Win32)
+        run: |
+          Set-StrictMode -Version Latest
+          $ErrorActionPreference = 'Stop'
+          msbuild "licecap\licecap\licecap.sln" /m /p:Configuration=Release /p:Platform=Win32
+
+      - name: Collect Windows artifacts
+        run: |
+          Set-StrictMode -Version Latest
+          $ErrorActionPreference = 'Stop'
+          $outDir = "licecap\licecap\Release_new"
+          if (-Not (Test-Path $outDir)) {
+            Write-Host "ERROR: Expected output directory not found: $outDir"
+            Write-Host "Listing licecap\licecap contents for debugging:"
+            Get-ChildItem -Recurse -Force "licecap\licecap" | Select-Object FullName
+            exit 1
+          }
+          if (-Not (Test-Path "$outDir\licecap.exe")) {
+            Write-Host "ERROR: licecap.exe not found in $outDir"
+            exit 1
+          }
+          New-Item -ItemType Directory -Force -Path artifacts | Out-Null
+          Copy-Item -Recurse -Force $outDir artifacts\Release_Win32
+
+      - name: Upload Windows artifacts
+        uses: actions/upload-artifact@v4
+        with:
+          name: licecap-windows
+          path: |
+            artifacts/Release_Win32/**
+          if-no-files-found: error
+
