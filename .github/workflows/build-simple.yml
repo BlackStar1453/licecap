@@ -15,8 +15,15 @@ jobs:
 
     - name: Build for macOS
       run: |
+        set -euxo pipefail
         cd licecap
-        xcodebuild -project licecap.xcodeproj -target licecap -configuration Release -derivedDataPath build CODE_SIGNING_ALLOWED=NO
+        xcodebuild \
+          -project licecap.xcodeproj \
+          -scheme licecap \
+          -configuration Release \
+          -derivedDataPath build \
+          CODE_SIGN_IDENTITY="" CODE_SIGNING_REQUIRED=NO CODE_SIGNING_ALLOWED=NO \
+          build
 
     - name: Prepare build artifacts
       run: |

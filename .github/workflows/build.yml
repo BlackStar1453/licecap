@@ -43,8 +43,8 @@ jobs:
           # Build without code signing to avoid CI requirements
           xcodebuild \
             -project licecap.xcodeproj \
+            -scheme licecap \
             -configuration Release \
-            -target licecap \
             -derivedDataPath build \
             CODE_SIGN_IDENTITY="" CODE_SIGNING_REQUIRED=NO CODE_SIGNING_ALLOWED=NO \
             build
@@ -144,4 +144,3 @@ jobs:
           path: |
             artifacts/Release_Win32/**
           if-no-files-found: error
-
